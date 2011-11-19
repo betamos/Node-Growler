@@ -1,13 +1,21 @@
 
 var net = require('net');
 var _ = require('underscore');
+var crypto = require('crypto');
+var fs = require('fs');
 
 var nl = '\r\n', nl2 = nl+nl;
 
-var GrowlApplication = function(name, host, port) {
+var GrowlApplication = function(name, options) {
   this.name = name;
-  this.host = host || 'localhost';
-  this.port = port || 23053;
+
+  this.options = _.extend({
+    host: 'localhost',
+    port: 23053,
+    applicationIcon: null,
+    debug: false
+  }, options);
+
   this.notifications = [];
   this.debug = false;
 };
@@ -18,15 +26,26 @@ exports.GrowlApplication = GrowlApplication;
  * Callback will get {Bool} status, {Error} error
  */
 GrowlApplication.prototype.register = function(cb) {
+  var queries = [], binaryQueries = [];
   var self = this;
 
-  var queries = [];
-
-  var q =  [
-    'GNTP/1.0 REGISTER NONE',
-    'Connection: Keep-Alive',
+  var q = this.header('REGISTER');
+  q.push(
     'Application-Name: '+ this.name,
-    'Notifications-Count: '+ this.notifications.length];
+    'Notifications-Count: '+ this.notifications.length
+  );
+
+  if (this.options.applicationIcon) {
+    var buf = fs.readFileSync(this.options.applicationIcon);
+    var hash = crypto.createHash('md5');
+    hash.update(buf);
+    var digest = hash.digest();
+    q.push('Application-Icon: x-growl-resource://'+ digest);
+    binaryQueries.push({
+      id: digest,
+      buffer: buf
+    });
+  }
   
   queries.push(this.assembleQuery(q));
 
@@ -38,23 +57,30 @@ GrowlApplication.prototype.register = function(cb) {
     ];
     queries.push(self.assembleQuery(q));
   });
-  this.sendQuery(this.assembleQueries(queries), cb);
+  this.sendQuery(this.assembleQueries(queries), cb || function() {}, binaryQueries);
 };
 
-GrowlApplication.prototype.sendNotification = function (name, title, string, cb) {
-  var q = [
-    'GNTP/1.0 NOTIFY NONE',
-    'Connection: Keep-Alive',
+GrowlApplication.prototype.sendNotification = function (name, title, string, cb, sticky) {
+  var q = this.header('NOTIFY');
+  q.push(
     'Application-Name: '+ this.name,
     'Notification-Name: '+ name,
     'Notification-Title: '+ title
-  ];
+  );
   string ? q.push('Notification-Text: '+ string) : null;
+  sticky ? q.push('Notification-Sticky: True') : null;
   this.sendQuery(this.assembleQuery(q), cb || function() {});
 }
 
 GrowlApplication.prototype.addNotifications = function(notifications) {
   this.notifications = notifications;
+};
+
+GrowlApplication.prototype.header = function(messageType) {
+  return [
+    'GNTP/1.0 '+ messageType +' NONE',
+    'X-Sender: nodejs GNTP Library'
+  ];
 };
 
 /* PRIVATE STUFF */
@@ -76,19 +102,24 @@ GrowlApplication.prototype.assembleQueries = function(queries) {
 /**
  * Send a query and wait for response, then call callback with cb({Boolean} status, {Error|Null} err)
  */
-GrowlApplication.prototype.sendQuery = function(query, cb) {
-
+GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
+  var self = this;
   var socket = new net.Socket();
   socket.setEncoding('utf8');
 
-  query += nl2;
-  if (this.debug)
+  if (this.options.debug)
     console.log('Sending query:\n===\n'+ query +'\n===');
-  socket.connect(this.port, this.host, function() {
+  socket.connect(this.options.port, this.options.host, function() {
     socket.write(query);
+    _.each(binaryQueries, function(bin) {
+      socket.write(nl2 +'Identifier: '+ bin.id + nl +'Length: '+ bin.buffer.length + nl2);
+      socket.write(bin.buffer);
+    });
+    socket.write(nl2);
   });
   socket.once('data', function(data) {
-    console.log(data);
+    if (self.options.debug)
+      console.log(data.toString());
     var response = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\r\n/.exec(data);
     if (!response)
       cb(false, new Error('The response was incorrectly formatted'));
@@ -98,6 +129,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb) {
       cb(true);
   });
   socket.once('close', function() {
-    console.log('Closed by growl');
+    if (self.options.debug)
+      console.log('Closed by growl');
   });
 };

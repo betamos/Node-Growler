@@ -1,13 +1,11 @@
 
-
 var gtnp = require('./gtnp');
 
-var conf = {
-  host: '127.0.0.1',
-  port: 23053
-};
-
-var myapp = new gtnp.GrowlApplication('Shit Head');
+var myapp = new gtnp.GrowlApplication('Shit Head', {
+//  host: '192.168.0.11',
+  debug: true,
+  applicationIcon: './volcano.jpg'
+});
 
 myapp.debug = true;
 
@@ -22,12 +20,12 @@ myapp.addNotifications([
   }
 ]);
 
-/*myapp.register(function(status, err) {
+myapp.register(function(status, err) {
   if (!status)
     throw err;
   else
     console.log('Fantastic! It just worked out of teh box.');
-});*/
+});
 
 myapp.sendNotification('Fart', 'Herro, my friend', null, function(status, err) {
   if (!status)
@@ -41,4 +39,4 @@ myapp.sendNotification('Egg Shat', 'Egg got shat', 'this time, egg really got sh
     throw err;
   else
     console.log('Fantastic! The message was totally delivered.');
-});
+}, true);
