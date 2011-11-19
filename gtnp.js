@@ -1,5 +1,6 @@
 
 var net = require('net');
+var _ = require('underscore');
 
 var nl = '\r\n', nl2 = nl+nl;
 
@@ -7,9 +8,8 @@ var GrowlApplication = function(name, host, port) {
   this.name = name;
   this.host = host || 'localhost';
   this.port = port || 23053;
-  this.notifications = {};
-  this.socket = new net.Socket();
-  this.socket.setEncoding('utf8');
+  this.notifications = [];
+  this.debug = false;
 };
 
 exports.GrowlApplication = GrowlApplication;
@@ -18,13 +18,46 @@ exports.GrowlApplication = GrowlApplication;
  * Callback will get {Bool} status, {Error} error
  */
 GrowlApplication.prototype.register = function(cb) {
-  var request =  [
+  var self = this;
+
+  var queries = [];
+
+  var q =  [
     'GNTP/1.0 REGISTER NONE',
+    'Connection: Keep-Alive',
     'Application-Name: '+ this.name,
     'Notifications-Count: '+ this.notifications.length];
-  var query = this.assembleQuery(request);
-  this.sendQuery(query, cb);
+  
+  queries.push(this.assembleQuery(q));
+
+  _.each(this.notifications, function(not) {
+    var q = [
+      'Notification-Name: '+ not.name,
+      'Notification-Display-Name: '+ not.displayName || not.name,
+      'Notification-Enabled: True'
+    ];
+    queries.push(self.assembleQuery(q));
+  });
+  this.sendQuery(this.assembleQueries(queries), cb);
 };
+
+GrowlApplication.prototype.sendNotification = function (name, title, string, cb) {
+  var q = [
+    'GNTP/1.0 NOTIFY NONE',
+    'Connection: Keep-Alive',
+    'Application-Name: '+ this.name,
+    'Notification-Name: '+ name,
+    'Notification-Title: '+ title
+  ];
+  string ? q.push('Notification-Text: '+ string) : null;
+  this.sendQuery(this.assembleQuery(q), cb || function() {});
+}
+
+GrowlApplication.prototype.addNotifications = function(notifications) {
+  this.notifications = notifications;
+};
+
+/* PRIVATE STUFF */
 
 /**
  * lines: An array of lines
@@ -44,11 +77,18 @@ GrowlApplication.prototype.assembleQueries = function(queries) {
  * Send a query and wait for response, then call callback with cb({Boolean} status, {Error|Null} err)
  */
 GrowlApplication.prototype.sendQuery = function(query, cb) {
-  var self = this;
-  this.socket.connect(this.port, this.host, function() {
-    self.socket.write(query + nl2);
+
+  var socket = new net.Socket();
+  socket.setEncoding('utf8');
+
+  query += nl2;
+  if (this.debug)
+    console.log('Sending query:\n===\n'+ query +'\n===');
+  socket.connect(this.port, this.host, function() {
+    socket.write(query);
   });
-  this.socket.once('data', function(data) {
+  socket.once('data', function(data) {
+    console.log(data);
     var response = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\r\n/.exec(data);
     if (!response)
       cb(false, new Error('The response was incorrectly formatted'));
@@ -57,12 +97,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb) {
     else // All good
       cb(true);
   });
+  socket.once('close', function() {
+    console.log('Closed by growl');
+  });
 };
-
-var notify = [
-  'GNTP/1.0 NOTIFY NONE',
-  'Application-Name: Bacon Notifier',
-  'Notification-Name: Download Complete',
-  'Notification-Title: Bacon is coming our way',
-  'Notification-String: Did you know bacon is very healthy?'
-].join(nl) +nl+nl;
