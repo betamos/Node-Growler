@@ -2,18 +2,18 @@
 var net = require('net');
 var _ = require('underscore');
 var crypto = require('crypto');
-var fs = require('fs');
 
 var nl = '\r\n', nl2 = nl+nl;
 
-var GrowlApplication = function(name, options) {
-  this.name = name;
+var GrowlApplication = function(applicationName, options) {
+  this.name = applicationName;
 
   this.options = _.extend({
-    host: 'localhost',
+    hostname: 'localhost',
     port: 23053,
-    applicationIcon: null,
-    debug: false
+    applicationIcon: null, // Buffer
+    debug: false,
+    additionalHeaders: ['X-Sender: Node.js GNTP Library'] // Send on every request
   }, options);
 
   this.notifications = [];
@@ -31,54 +31,42 @@ GrowlApplication.prototype.register = function(cb) {
 
   var q = this.header('REGISTER');
   q.push(
-    'Application-Name: '+ this.name,
     'Notifications-Count: '+ this.notifications.length
   );
 
-  if (this.options.applicationIcon) {
-    fs.readFile(this.options.applicationIcon, null, function(err, buf) {
-      if (err)
-        throw err;
-
-      var hash = crypto.createHash('md5');
-      hash.update(buf);
-      var digest = hash.digest();
-      q.push('Application-Icon: x-growl-resource://'+ digest);
-      binaryQueries.push({
-        id: digest,
-        buffer: buf
-      });
-      continueFn();
+  if (Buffer.isBuffer(this.options.applicationIcon)) {
+    var hash = crypto.createHash('md5');
+    hash.update(this.options.applicationIcon);
+    var digest = hash.digest();
+    q.push('Application-Icon: x-growl-resource://'+ digest);
+    binaryQueries.push({
+      id: digest,
+      buffer: this.options.applicationIcon
     });
   }
-  else
-    process.nextTick(continueFn);
 
-  function continueFn() {
-  
+  queries.push(self.assembleQuery(q));
+
+  _.each(self.notifications, function(not) {
+    var q = [
+      'Notification-Name: '+ not.name,
+      'Notification-Display-Name: '+ not.displayName || not.name,
+      'Notification-Enabled: True'
+    ];
     queries.push(self.assembleQuery(q));
-
-    _.each(self.notifications, function(not) {
-      var q = [
-        'Notification-Name: '+ not.name,
-        'Notification-Display-Name: '+ not.displayName || not.name,
-        'Notification-Enabled: True'
-      ];
-      queries.push(self.assembleQuery(q));
-    });
-    self.sendQuery(self.assembleQueries(queries), cb || function() {}, binaryQueries);
-  };
+  });
+  self.sendQuery(self.assembleQueries(queries), cb || function() {}, binaryQueries);
 };
 
-GrowlApplication.prototype.sendNotification = function (name, title, string, cb, sticky) {
+GrowlApplication.prototype.sendNotification = function (notificationName, title, string, cb, sticky) {
   var q = this.header('NOTIFY');
   q.push(
-    'Application-Name: '+ this.name,
-    'Notification-Name: '+ name,
+    'Notification-Name: '+ notificationName,
     'Notification-Title: '+ title
   );
   string ? q.push('Notification-Text: '+ string) : null;
   sticky ? q.push('Notification-Sticky: True') : null;
+  q.concat(this.options.additionalHeaders);
   this.sendQuery(this.assembleQuery(q), cb || function() {});
 }
 
@@ -89,8 +77,8 @@ GrowlApplication.prototype.addNotifications = function(notifications) {
 GrowlApplication.prototype.header = function(messageType) {
   return [
     'GNTP/1.0 '+ messageType +' NONE',
-    'X-Sender: nodejs GNTP Library'
-  ];
+    'Application-Name: '+ this.name
+  ].concat(this.options.additionalHeaders);
 };
 
 /* PRIVATE STUFF */
@@ -119,7 +107,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
 
   if (this.options.debug)
     console.log('Sending query:\n===\n'+ query +'\n===');
-  socket.connect(this.options.port, this.options.host, function() {
+  socket.connect(this.options.port, this.options.hostname, function() {
     socket.write(query);
     _.each(binaryQueries, function(bin) {
       socket.write(nl2 +'Identifier: '+ bin.id + nl +'Length: '+ bin.buffer.length + nl2);

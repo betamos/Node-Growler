@@ -1,10 +1,11 @@
 
-var gtnp = require('./gtnp');
+var gtnp = require('./gtnp'),
+    fs = require('fs');
 
 var myapp = new gtnp.GrowlApplication('Shit Head', {
-//  host: '192.168.0.11',
+//  hostname: '192.168.0.11',
   debug: true,
-  applicationIcon: './volcano.jpg'
+  applicationIcon: fs.readFileSync('./volcano.jpg')
 });
 
 myapp.debug = true;
