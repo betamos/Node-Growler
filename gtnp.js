@@ -25,7 +25,7 @@ exports.GrowlApplication = GrowlApplication;
 /**
  * Callback will get {Bool} status, {Error} error
  */
-GrowlApplication.prototype.register = function(cb) {
+GrowlApplication.prototype.register = function(callback) {
   var queries = [], binaryQueries = [];
   var self = this;
 
@@ -37,7 +37,7 @@ GrowlApplication.prototype.register = function(cb) {
   if (Buffer.isBuffer(this.options.applicationIcon)) {
     var hash = crypto.createHash('md5');
     hash.update(this.options.applicationIcon);
-    var digest = hash.digest();
+    var digest = hash.digest('hex');
     q.push('Application-Icon: x-growl-resource://'+ digest);
     binaryQueries.push({
       id: digest,
@@ -47,7 +47,7 @@ GrowlApplication.prototype.register = function(cb) {
 
   queries.push(self.assembleQuery(q));
 
-  _.each(self.notifications, function(not) {
+  _.each(this.notifications, function(not) {
     var q = [
       'Notification-Name: '+ not.name,
       'Notification-Display-Name: '+ not.displayName || not.name,
@@ -55,33 +55,44 @@ GrowlApplication.prototype.register = function(cb) {
     ];
     queries.push(self.assembleQuery(q));
   });
-  self.sendQuery(self.assembleQueries(queries), cb || function() {}, binaryQueries);
+  self.sendQuery(self.assembleQueries(queries), callback || function() {}, binaryQueries);
 };
 
-GrowlApplication.prototype.sendNotification = function (notificationName, title, string, cb, sticky) {
-  var q = this.header('NOTIFY');
-  q.push(
-    'Notification-Name: '+ notificationName,
-    'Notification-Title: '+ title
+GrowlApplication.prototype.sendNotification = function (notificationName, options) {
+  var notification = _.find(this.notifications, function(not) {
+    return not.name == notificationName;
+  });
+  options = _.extend({
+    title: notification.displayName,
+    text: '',
+    callback: function() {},
+    sticky: false
+  }, options);
+  console.log(options);
+
+  var q = this.header('NOTIFY').concat(
+    'Notification-Name: '+ notification.name,
+    'Notification-Title: '+ options.title,
+    'Notification-Text: '+ options.text,
+    'Notification-Sticky: '+ (options.sticky ? 'True' : 'False')
   );
-  string ? q.push('Notification-Text: '+ string) : null;
-  sticky ? q.push('Notification-Sticky: True') : null;
-  q.concat(this.options.additionalHeaders);
-  this.sendQuery(this.assembleQuery(q), cb || function() {});
-}
+  this.sendQuery(this.assembleQuery(q), options.callback);
+};
 
 GrowlApplication.prototype.addNotifications = function(notifications) {
-  this.notifications = notifications;
-};
-
-GrowlApplication.prototype.header = function(messageType) {
-  return [
-    'GNTP/1.0 '+ messageType +' NONE',
-    'Application-Name: '+ this.name
-  ].concat(this.options.additionalHeaders);
+  this.notifications = _.map(notifications, function(not) {
+    not.displayName = not.displayName || not.name; // Set display name
+    return not;
+  });
 };
 
 /* PRIVATE STUFF */
+
+GrowlApplication.prototype.header = function(messageType) {
+  return [
+    'GNTP/1.0 '+ messageType +' NONE'
+  ].concat(this.options.additionalHeaders, 'Application-Name: '+ this.name);
+};
 
 /**
  * lines: An array of lines

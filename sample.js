@@ -13,7 +13,7 @@ myapp.debug = true;
 myapp.addNotifications([
   {
     name: 'Egg Shat',
-    displayName: 'Egg was shat'
+    enabled: false
   },
   {
     name: 'Fart',
@@ -28,16 +28,23 @@ myapp.register(function(status, err) {
     console.log('Fantastic! It just worked out of teh box.');
 });
 
-myapp.sendNotification('Fart', 'Herro, my friend', null, function(status, err) {
-  if (!status)
-    throw err;
-  else
-    console.log('Fantastic! The message was totally delivered.');
+myapp.sendNotification('Fart', {
+  title: 'Herro, my friend',
+  callback: function(status, err) {
+    if (!status)
+      throw err;
+    else
+      console.log('Fantastic! The message was totally delivered.');
+  }
 });
 
-myapp.sendNotification('Egg Shat', 'Egg got shat', 'this time, egg really got shat badly', function(status, err) {
-  if (!status)
-    throw err;
-  else
-    console.log('Fantastic! The message was totally delivered.');
-}, true);
+myapp.sendNotification('Egg Shat', {
+  text: 'Bacon egg',
+  sticky: true,
+  callback: function(status, err) {
+    if (!status)
+      throw err;
+    else
+      console.log('Fantastic! This message was totally delivered.');
+  }
+});
