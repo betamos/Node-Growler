@@ -36,28 +36,38 @@ GrowlApplication.prototype.register = function(cb) {
   );
 
   if (this.options.applicationIcon) {
-    var buf = fs.readFileSync(this.options.applicationIcon);
-    var hash = crypto.createHash('md5');
-    hash.update(buf);
-    var digest = hash.digest();
-    q.push('Application-Icon: x-growl-resource://'+ digest);
-    binaryQueries.push({
-      id: digest,
-      buffer: buf
+    fs.readFile(this.options.applicationIcon, null, function(err, buf) {
+      if (err)
+        throw err;
+
+      var hash = crypto.createHash('md5');
+      hash.update(buf);
+      var digest = hash.digest();
+      q.push('Application-Icon: x-growl-resource://'+ digest);
+      binaryQueries.push({
+        id: digest,
+        buffer: buf
+      });
+      continueFn();
     });
   }
-  
-  queries.push(this.assembleQuery(q));
+  else
+    process.nextTick(continueFn);
 
-  _.each(this.notifications, function(not) {
-    var q = [
-      'Notification-Name: '+ not.name,
-      'Notification-Display-Name: '+ not.displayName || not.name,
-      'Notification-Enabled: True'
-    ];
+  function continueFn() {
+  
     queries.push(self.assembleQuery(q));
-  });
-  this.sendQuery(this.assembleQueries(queries), cb || function() {}, binaryQueries);
+
+    _.each(self.notifications, function(not) {
+      var q = [
+        'Notification-Name: '+ not.name,
+        'Notification-Display-Name: '+ not.displayName || not.name,
+        'Notification-Enabled: True'
+      ];
+      queries.push(self.assembleQuery(q));
+    });
+    self.sendQuery(self.assembleQueries(queries), cb || function() {}, binaryQueries);
+  };
 };
 
 GrowlApplication.prototype.sendNotification = function (name, title, string, cb, sticky) {
