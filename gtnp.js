@@ -68,18 +68,20 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
 
   var not = this.notifications[name];
 
-  options = _.extend({
+  _.defaults(options, {
     title: not.displayName,
     text: '',
-    callback: function() {},
-    sticky: false
-  }, options);
+    callback: function() {}, // Called when a response is recieved
+    sticky: false, // Stay on screen until clicked
+    priority: 0 // In range [-2, 2], 2 meaning emergency
+  });
 
   var q = this.header('NOTIFY').concat(
     'Notification-Name: '+ name,
     'Notification-Title: '+ options.title,
     'Notification-Text: '+ options.text,
-    'Notification-Sticky: '+ (options.sticky ? 'True' : 'False')
+    'Notification-Sticky: '+ (options.sticky ? 'True' : 'False'),
+    'Notification-Priority: '+ options.priority
   );
   this.sendQuery(this.assembleQuery(q), options.callback);
 };
@@ -123,6 +125,8 @@ GrowlApplication.prototype.hashHead = function() {
   // Retrieve the final hash (digest) in hex form
   keyHash = hash.digest('hex');
   hashHead = this.options.hashAlgorithm +':'+ keyHash +'.'+ salt.toString('hex');
+  // Actually, GNTP only requires the algorithm id (e.g. sha1) to be uppercase
+  // but their example GNTP information lines are all uppercase so better be safe.
   return ' '+ hashHead.toUpperCase();
 };
 
