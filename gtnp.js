@@ -15,7 +15,10 @@ var GrowlApplication = function(applicationName, options) {
     timeout: 5000, // Socket inactivity timeout
     applicationIcon: null, // Buffer
     debug: false,
-    additionalHeaders: ['X-Sender: Node.js GNTP Library'] // Send on every request
+    additionalHeaders: ['X-Sender: Node.js GNTP Library'], // Send on every request TODO: not merged
+    encryption: false,
+    hashAlgorithm: 'sha1',
+    password: null
   });
 
   this.notifications = {};
@@ -96,8 +99,31 @@ GrowlApplication.prototype.addNotifications = function(notifications) {
 
 GrowlApplication.prototype.header = function(messageType) {
   return [
-    'GNTP/1.0 '+ messageType +' NONE'
+    'GNTP/1.0 '+ messageType +' NONE' + this.hashHead()
   ].concat(this.options.additionalHeaders, 'Application-Name: '+ this.name);
+};
+
+GrowlApplication.prototype.hashHead = function() {
+  // Need to check for type since an empty string is a valid password
+  if (typeof this.options.password != 'string')
+    return '';
+
+  var salt = crypto.randomBytes(16),
+    hash = crypto.createHash(this.options.hashAlgorithm),
+    key, keyHash, hashHead;
+
+  hash.update(this.options.password);
+  hash.update(salt);
+  // The key is pass+salt hashed
+  key = hash.digest();
+  // Create a new hash object
+  hash = crypto.createHash(this.options.hashAlgorithm);
+  // Yo dawg, we put a hash in yo hash
+  hash.update(key);
+  // Retrieve the final hash (digest) in hex form
+  keyHash = hash.digest('hex');
+  hashHead = this.options.hashAlgorithm +':'+ keyHash +'.'+ salt.toString('hex');
+  return ' '+ hashHead.toUpperCase();
 };
 
 /**

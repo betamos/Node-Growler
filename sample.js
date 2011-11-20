@@ -1,11 +1,15 @@
 
 var gtnp = require('./gtnp'),
     fs = require('fs'),
+    crypto = require('crypto'),
+    buffer = require('buffer'),
     net = require('net');
 
 var myapp = new gtnp.GrowlApplication('Shit Head', {
-//  hostname: '192.168.0.11',
+  hostname: '192.168.0.11',
   debug: true,
+  password: 'bacon',
+//  hashAlgorithm: 'sha512',
   applicationIcon: fs.readFileSync('./volcano.jpg'),
 });
 
