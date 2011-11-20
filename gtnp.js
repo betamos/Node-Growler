@@ -18,7 +18,7 @@ var GrowlApplication = function(applicationName, options) {
     additionalHeaders: ['X-Sender: Node.js GNTP Library'] // Send on every request
   });
 
-  this.notifications = [];
+  this.notifications = {};
   this.debug = false;
 };
 
@@ -44,7 +44,7 @@ GrowlApplication.prototype.register = function(callback) {
 
   var q = this.header('REGISTER');
   q.push(
-    'Notifications-Count: '+ this.notifications.length
+    'Notifications-Count: '+ _.keys(this.notifications).length
   );
 
   if (Buffer.isBuffer(this.options.applicationIcon)) {
@@ -60,30 +60,30 @@ GrowlApplication.prototype.register = function(callback) {
 
   queries.push(self.assembleQuery(q));
 
-  _.each(this.notifications, function(not) {
+  _.each(this.notifications, function(options, name) {
     var q = [
-      'Notification-Name: '+ not.name,
-      'Notification-Display-Name: '+ not.displayName || not.name,
-      'Notification-Enabled: '+ (not.enabled ? 'True' : 'False')
+      'Notification-Name: '+ name,
+      'Notification-Display-Name: '+ options.displayName || name,
+      'Notification-Enabled: '+ (options.enabled ? 'True' : 'False')
     ];
     queries.push(self.assembleQuery(q));
   });
   self.sendQuery(self.assembleQueries(queries), callback || function() {}, binaryQueries);
 };
 
-GrowlApplication.prototype.sendNotification = function (notificationName, options) {
-  var notification = _.find(this.notifications, function(not) {
-    return not.name == notificationName;
-  });
+GrowlApplication.prototype.sendNotification = function (name, options) {
+
+  var not = this.notifications[name];
+
   options = _.extend({
-    title: notification.displayName,
+    title: not.displayName,
     text: '',
     callback: function() {},
     sticky: false
   }, options);
 
   var q = this.header('NOTIFY').concat(
-    'Notification-Name: '+ notification.name,
+    'Notification-Name: '+ name,
     'Notification-Title: '+ options.title,
     'Notification-Text: '+ options.text,
     'Notification-Sticky: '+ (options.sticky ? 'True' : 'False')
@@ -92,13 +92,14 @@ GrowlApplication.prototype.sendNotification = function (notificationName, option
 };
 
 GrowlApplication.prototype.addNotifications = function(notifications) {
-  this.notifications = _.map(notifications, function(not) {
-    _.defaults(not, {
-      displayName: not.name, // Set display name
+  _.each(notifications, function(options, name) {
+    _.defaults(options, {
+      displayName: name, // Set display name
       enabled: true // Enabled by default
     });
-    return not;
   });
+  this.notifications = notifications;
+  console.log(notifications);
 };
 
 /* PRIVATE STUFF */

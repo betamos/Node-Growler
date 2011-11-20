@@ -17,13 +17,13 @@ var server = net.createServer(function(socket) {
 //server.listen(1337);
 */
 
-myapp.addNotifications([{
-    name: 'Egg Shat'
-  }, {
-    name: 'Fart',
+myapp.addNotifications({
+  'Egg Shat': {},
+  'Fart': {
     enabled: true,
     displayName: 'A fart just occured'
-  }]);
+  }
+});
 
 myapp.register(function(status, err) {
   if (!status)
