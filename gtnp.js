@@ -7,20 +7,33 @@ var nl = '\r\n', nl2 = nl+nl;
 
 var GrowlApplication = function(applicationName, options) {
   this.name = applicationName;
+  this.options = options;
 
-  this.options = _.extend({
+  _.defaults(options, {
     hostname: 'localhost',
     port: 23053,
+    timeout: 5000, // Socket inactivity timeout
     applicationIcon: null, // Buffer
     debug: false,
     additionalHeaders: ['X-Sender: Node.js GNTP Library'] // Send on every request
-  }, options);
+  });
 
   this.notifications = [];
   this.debug = false;
 };
 
 exports.GrowlApplication = GrowlApplication;
+
+/*var GTNPErrorResponseException = function(message) {
+  this.name = 'GTNPErrorResponseException';
+  this.message = message;
+};
+
+var GTNPMalformedResponseException = function(message, errorCode) {
+  this.name = 'GTNPMalformedResponseException';
+  this.message = message;
+  this.errorCode = parseInt(errorCode) || null;
+};*/
 
 /**
  * Callback will get {Bool} status, {Error} error
@@ -51,7 +64,7 @@ GrowlApplication.prototype.register = function(callback) {
     var q = [
       'Notification-Name: '+ not.name,
       'Notification-Display-Name: '+ not.displayName || not.name,
-      'Notification-Enabled: True'
+      'Notification-Enabled: '+ (not.enabled ? 'True' : 'False')
     ];
     queries.push(self.assembleQuery(q));
   });
@@ -68,7 +81,6 @@ GrowlApplication.prototype.sendNotification = function (notificationName, option
     callback: function() {},
     sticky: false
   }, options);
-  console.log(options);
 
   var q = this.header('NOTIFY').concat(
     'Notification-Name: '+ notification.name,
@@ -81,7 +93,10 @@ GrowlApplication.prototype.sendNotification = function (notificationName, option
 
 GrowlApplication.prototype.addNotifications = function(notifications) {
   this.notifications = _.map(notifications, function(not) {
-    not.displayName = not.displayName || not.name; // Set display name
+    _.defaults(not, {
+      displayName: not.name, // Set display name
+      enabled: true // Enabled by default
+    });
     return not;
   });
 };
@@ -127,18 +142,73 @@ GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
     socket.write(nl2);
   });
   socket.once('data', function(data) {
+    socket.destroy();
     if (self.options.debug)
       console.log(data.toString());
-    var response = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\r\n/.exec(data);
-    if (!response)
-      cb(false, new Error('The response was incorrectly formatted'));
-    else if (response[1] == 'ERROR')
-      cb(false, new Error('The Growl client said that I did wrong :\'('));
-    else // All good
+    var response = self.parseResponse(data);
+    if (response && response.status) // All good
       cb(true);
+    else if (response) { // GTNP responded with error
+      var e = new Error('Host: '+
+        (response.headers['Error-Description'] ? response.headers['Error-Description'] : ''));
+
+      e.errorCode = response.headers['Error-Code'];
+      cb(false, e);
+    }
+
+    else // Not even valid GTNP
+      cb(false, new Error('The response was invalid GTNP.'));
   });
-  socket.once('close', function() {
-    if (self.options.debug)
-      console.log('Closed by growl');
+
+  // Exception management
+  socket.on('error', function(exception) {
+    // Could probably not connect to server
+    cb(false, exception);
   });
+  socket.setTimeout(this.options.timeout, function() {
+    socket.destroy();
+    cb(false, new Error('Server did not respond'));
+  });
+};
+
+
+/**
+  Parses and returns a raw response into an object which looks like this:
+  {
+    status: true, // OK | ERROR => true | false
+    headers: {
+      'Response-Action': 'NOTIFY',
+      'Error-Code': '402'
+    }
+  }
+  or null if the GNTP information line is malformed.
+  Ignores lines that are not key: value structured
+ */
+GrowlApplication.prototype.parseResponse = function(data) {
+  var lines = data.split('\r\n'),
+    matches;
+
+  // Check for valid GNTP header
+  if (!(lines.length &&
+        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE$/.exec(lines.shift())) &&
+        matches.length == 2))
+    return null; // Invalid, return null
+
+  var status = matches[1] == 'OK';
+  var headers = {};
+  _(lines).chain()
+    .filter(function(line) { return /^.+:\s.*$/.test(line); })
+    .map(function(line) {
+      // Match key: value pair
+      var matches = /^(.+):\s(.*)$/.exec(line);
+      if (!matches || matches.length < 3)
+        throw new Error('GTNP Module internal error')
+
+      headers[matches[1]] = matches[2];
+    })
+    .value(); // End chain
+  return {
+    status: status,
+    headers: headers
+  };
 };
