@@ -24,16 +24,6 @@ var GrowlApplication = function(applicationName, options) {
 
 exports.GrowlApplication = GrowlApplication;
 
-/*var GTNPErrorResponseException = function(message) {
-  this.name = 'GTNPErrorResponseException';
-  this.message = message;
-};
-
-var GTNPMalformedResponseException = function(message, errorCode) {
-  this.name = 'GTNPMalformedResponseException';
-  this.message = message;
-  this.errorCode = parseInt(errorCode) || null;
-};*/
 
 /**
  * Callback will get {Bool} status, {Error} error
