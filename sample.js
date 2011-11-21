@@ -1,16 +1,16 @@
 
-var gtnp = require('./gtnp'),
+var gtnp = require('./gntp'),
     fs = require('fs'),
     crypto = require('crypto'),
     buffer = require('buffer'),
     net = require('net');
 
 var myapp = new gtnp.GrowlApplication('Shit Head', {
-  hostname: '192.168.0.11',
+  //hostname: '192.168.0.15',
   debug: true,
   password: 'bacon',
-//  hashAlgorithm: 'sha512',
-  applicationIcon: fs.readFileSync('./volcano.jpg'),
+  hashAlgorithm: 'sha256',
+  applicationIcon: fs.readFileSync('./volcano.jpg')
 });
 
 /*
@@ -44,7 +44,7 @@ myapp.register(function(status, err) {
     }
   });
 
-  /*myapp.sendNotification('Egg Shat', {
+  myapp.sendNotification('Egg Shat', {
     text: 'Bacon egg är gott',
     sticky: false,
     callback: function(status, err) {
@@ -53,6 +53,6 @@ myapp.register(function(status, err) {
       else
         console.log('Fantastic! This message was totally delivered.');
     }
-  });*/
+  });
   
 });

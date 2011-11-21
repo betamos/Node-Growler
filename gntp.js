@@ -169,7 +169,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
     var response = self.parseResponse(data);
     if (response && response.status) // All good
       cb(true);
-    else if (response) { // GTNP responded with error
+    else if (response) { // GNTP responded with error
       var e = new Error('Host: '+
         (response.headers['Error-Description'] ? response.headers['Error-Description'] : ''));
 
@@ -177,8 +177,8 @@ GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
       cb(false, e);
     }
 
-    else // Not even valid GTNP
-      cb(false, new Error('The response was invalid GTNP.'));
+    else // Not even valid GNTP
+      cb(false, new Error('The response was invalid GNTP.'));
   });
 
   // Exception management
@@ -211,7 +211,7 @@ GrowlApplication.prototype.parseResponse = function(data) {
 
   // Check for valid GNTP header
   if (!(lines.length &&
-        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE$/.exec(lines.shift())) &&
+        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\s+$/.exec(lines.shift())) &&
         matches.length == 2))
     return null; // Invalid, return null
 
@@ -223,7 +223,7 @@ GrowlApplication.prototype.parseResponse = function(data) {
       // Match key: value pair
       var matches = /^(.+):\s(.*)$/.exec(line);
       if (!matches || matches.length < 3)
-        throw new Error('GTNP Module internal error')
+        throw new Error('GNTP Module internal error');
 
       headers[matches[1]] = matches[2];
     })
