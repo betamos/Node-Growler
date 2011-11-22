@@ -296,7 +296,7 @@ GrowlApplication.prototype.parseResponse = function(data) {
 
   // Check for valid GNTP header
   if (!(lines.length &&
-        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\s*$/.exec(lines.shift())) &&
+        (matches = /^GNTP\/1\.0\s\-(OK|ERROR)\sNONE\s*$/.exec(lines.shift())) &&
         matches.length == 2))
     return null; // Invalid, return null
 
