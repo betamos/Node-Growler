@@ -32,7 +32,7 @@ exports.GrowlApplication = GrowlApplication;
 
 
 /**
- * Callback will get {Bool} status, {Error} error
+ * Callback will get {Boolean} status, {Error} error
  */
 GrowlApplication.prototype.register = function(callback) {
 
