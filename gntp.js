@@ -1,7 +1,8 @@
 
+var util = require('util');
 var net = require('net');
-var _ = require('underscore');
 var crypto = require('crypto');
+var _ = require('underscore');
 
 var nl = '\r\n', nl2 = nl+nl;
 
@@ -15,7 +16,7 @@ var GrowlApplication = function(applicationName, options) {
     timeout: 5000, // Socket inactivity timeout
     applicationIcon: null, // Buffer
     debug: false,
-    additionalHeaders: ['X-Sender: Node.js GNTP Library'], // Send on every request TODO: not merged
+    additionalHeaders: {'X-Sender': 'Node.js GNTP Library'}, // Send on every request TODO: not merged
     encryption: false,
     hashAlgorithm: 'sha1',
     password: null
@@ -32,58 +33,67 @@ exports.GrowlApplication = GrowlApplication;
  * Callback will get {Bool} status, {Error} error
  */
 GrowlApplication.prototype.register = function(callback) {
-  var queries = [], binaryQueries = [];
-  var self = this;
 
-  var q = this.header('REGISTER');
-  q.push(
-    'Notifications-Count: '+ _.keys(this.notifications).length
-  );
-
-  if (Buffer.isBuffer(this.options.applicationIcon)) {
-    var hash = crypto.createHash('md5');
-    hash.update(this.options.applicationIcon);
-    var digest = hash.digest('hex');
-    q.push('Application-Icon: x-growl-resource://'+ digest);
-    binaryQueries.push({
-      id: digest,
-      buffer: this.options.applicationIcon
-    });
-  }
-
-  queries.push(self.assembleQuery(q));
-
+  var q = {
+    messageType: 'REGISTER',
+    headers: [{
+      'Application-Name': this.name,
+      'Notifications-Count': _.keys(this.notifications).length,
+      'Application-Icon': this.options.applicationIcon
+    }]
+  };
   _.each(this.notifications, function(options, name) {
-    var q = [
-      'Notification-Name: '+ name,
-      'Notification-Display-Name: '+ options.displayName || name,
-      'Notification-Enabled: '+ (options.enabled ? 'True' : 'False')
-    ];
-    queries.push(self.assembleQuery(q));
+    q.headers.push({
+      'Notification-Name': name,
+      'Notification-Display-Name': options.displayName || name,
+      'Notification-Enabled': !!options.enabled
+    });
   });
-  self.sendQuery(self.assembleQueries(queries), callback || function() {}, binaryQueries);
+
+  this.sendQuery(q, callback || function() {});
 };
 
+/**
+ * Send a notification to the host.
+ *
+ * @param {string} name Notification name, must have already been added to the
+ *   GrowlApplication object. Throws an error if it doesn't exist.
+ *
+ * @param {Object=} options
+ *   Additional options object with the following optional keys:
+ *   - title: Title of the message on the screen, visible to user.
+ *   - text: Message text, visible to the user.
+ *   - callback: Called when response is recieved from the host.
+ *   - sticky: Makes sure notification stays on screen until clicked or dismissed.
+ */
 GrowlApplication.prototype.sendNotification = function (name, options) {
 
-  var not = this.notifications[name];
+  var notification = this.notifications[name];
+  if (!notification)
+    throw new Error('Cannot find notification with name <'+ name +'>');
 
   _.defaults(options, {
-    title: not.displayName,
+    title: notification.displayName,
     text: '',
     callback: function() {}, // Called when a response is recieved
     sticky: false, // Stay on screen until clicked
-    priority: 0 // In range [-2, 2], 2 meaning emergency
+    priority: 0, // In range [-2, 2], 2 meaning emergency
+    icon: null
   });
 
-  var q = this.header('NOTIFY').concat(
-    'Notification-Name: '+ name,
-    'Notification-Title: '+ options.title,
-    'Notification-Text: '+ options.text,
-    'Notification-Sticky: '+ (options.sticky ? 'True' : 'False'),
-    'Notification-Priority: '+ options.priority
-  );
-  this.sendQuery(this.assembleQuery(q), options.callback);
+  this.sendQuery({
+    messageType: 'NOTIFY',
+    headers: {
+      'Application-Name': this.name,
+      'Notification-Name': name,
+      'Notification-Title': options.title,
+      'Notification-Text': options.text,
+      'Notification-Sticky': !!options.sticky,
+      'Notification-Priority': options.priority,
+      'Notification-Priority': options.icon // Note that if null (default), this header will be omitted
+    }
+  }, options.callback);
+
 };
 
 GrowlApplication.prototype.addNotifications = function(notifications) {
@@ -94,16 +104,9 @@ GrowlApplication.prototype.addNotifications = function(notifications) {
     });
   });
   this.notifications = notifications;
-  console.log(notifications);
 };
 
 /* PRIVATE STUFF */
-
-GrowlApplication.prototype.header = function(messageType) {
-  return [
-    'GNTP/1.0 '+ messageType +' NONE' + this.hashHead()
-  ].concat(this.options.additionalHeaders, 'Application-Name: '+ this.name);
-};
 
 GrowlApplication.prototype.hashHead = function() {
   // Need to check for type since an empty string is a valid password
@@ -131,34 +134,100 @@ GrowlApplication.prototype.hashHead = function() {
 };
 
 /**
- * lines: An array of lines
+ * Assemble a query into a buffer that is ready to be sent.
+ * One possible side effect is that the query object may be altered.
+ *
+ * @param {Object} query
+ *   An object with the keys:
+ *   - messageType: The GNTP message type, e.g. "NOTIFY"
+ *   - headers: An object with header-names as keys and each value is one of:
+ *     - string: (GNTP <string>)
+ *     - number: (GNTP <int>) Will run through parseInt to assure integer
+ *     - boolean: (GNTP <boolean>) Must be true or false, no tricks
+ *     - Buffer: for sending binary data, e.g. an image
+ *     - null: omits the entire header
+ *
+ * @return {Object} An object with the keys:
+ *   - message: {string} The message, does NOT begin nor end with CRLF
+ *   - attachments: {Object} Keys: {string} GNTP <uniqueid>, Values: {Buffer}
  */
-GrowlApplication.prototype.assembleQuery = function(lines) {
-  return lines.join(nl);
-};
-
-/**
- * Assemble multiple queries for sending.
- */
-GrowlApplication.prototype.assembleQueries = function(queries) {
-  return queries.join(nl2);
+GrowlApplication.prototype.assembleQuery = function(query) {
+  var self = this;
+  var infoLine = 'GNTP/1.0 '+ query.messageType +' NONE' + this.hashHead();
+  var blocks = []; // TODO: String performance
+  var attachments = {}; // An object with <uniqueid> as keys and buffers as values
+  if (!util.isArray(query.headers))
+    query.headers = [query.headers]; // Convert to an array
+  _.each(query.headers, function(header, index) {
+    var lines = [];
+    if (index == 0) {
+      // First line in first block is always infoLine
+      lines.push(infoLine);
+      // Additional headers only once
+      _.defaults(header, self.options.additionalHeaders);
+    }
+    _.each(header, function(value, key) {
+      if (typeof key != 'string' || value == null)
+        return;
+  
+      // Special case for buffers, they will be treated as attachments
+      if (Buffer.isBuffer(value)) {
+        // Create an md5 hash of the buffer
+        var hash = crypto.createHash('md5');
+        hash.update(value);
+        var digest = hash.digest('hex');
+        // Add to binary
+        attachments[digest] = value;
+        // Point to the binary attachment and alter value
+        value = 'x-growl-resource://'+ digest;
+      }
+  
+      // Alter value so that it is completely GNTP safe
+      switch (typeof value) {
+      case 'string':
+        break;
+      case 'number':
+        value = parseInt(value);
+        if (isNaN(value))
+          return;
+        break;
+      case 'boolean':
+        value = value ? 'True' : 'False';
+        break;
+      default:
+        return;
+      }
+      // If everything worked out, add the line
+      lines.push(key +': '+ value);
+    });
+    blocks.push(lines.join(nl));
+  });
+  return {
+    message: blocks.join(nl2),
+    attachments: attachments
+  };
 };
 
 /**
  * Send a query and wait for response, then call callback with cb({Boolean} status, {Error|Null} err)
  */
-GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
+GrowlApplication.prototype.sendQuery = function(query, cb) {
   var self = this;
   var socket = new net.Socket();
-  socket.setEncoding('utf8');
+  socket.setEncoding('utf8'); // Response will be a string instead of buffer
+
+  // Retrieve the data that shall be sent
+  var data = this.assembleQuery(query);
 
   if (this.options.debug)
-    console.log('Sending query:\n===\n'+ query +'\n===');
+    console.log(data.message);
+
+  // Connect
   socket.connect(this.options.port, this.options.hostname, function() {
-    socket.write(query);
-    _.each(binaryQueries, function(bin) {
-      socket.write(nl2 +'Identifier: '+ bin.id + nl +'Length: '+ bin.buffer.length + nl2);
-      socket.write(bin.buffer);
+    socket.write(data.message);
+    _.each(data.attachments, function(buffer, uniqueid) {
+      socket.write(nl2 +'Identifier: '+ uniqueid + nl +'Length: '+ buffer.length + nl2);
+      socket.write(buffer);
     });
     socket.write(nl2);
   });
@@ -206,12 +275,12 @@ GrowlApplication.prototype.sendQuery = function(query, cb, binaryQueries) {
   Ignores lines that are not key: value structured
  */
 GrowlApplication.prototype.parseResponse = function(data) {
-  var lines = data.split('\r\n'),
+  var lines = data.split(nl),
     matches;
 
   // Check for valid GNTP header
   if (!(lines.length &&
-        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\s+$/.exec(lines.shift())) &&
+        (matches = /^GNTP\/1\.0\ \-(OK|ERROR)\ NONE\s*$/.exec(lines.shift())) &&
         matches.length == 2))
     return null; // Invalid, return null
 
