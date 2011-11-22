@@ -15,15 +15,17 @@ var GrowlApplication = function(applicationName, options) {
     port: 23053,
     timeout: 5000, // Socket inactivity timeout
     icon: null, // Buffer
-    debug: false,
-    additionalHeaders: {'X-Sender': 'Node.js GNTP Library'}, // Send on every request TODO: not merged
+    debugFn: function() {},
+    additionalHeaders: {
+      'Origin-Software-Name': 'Node.js GNTP Library',
+      'Origin-Software-Version': '1.0'
+    },
     encryption: false,
     hashAlgorithm: 'sha1',
     password: null
   });
 
   this.notifications = {};
-  this.debug = false;
 };
 
 exports.GrowlApplication = GrowlApplication;
@@ -39,7 +41,7 @@ GrowlApplication.prototype.register = function(callback) {
     headers: [{
       'Application-Name': this.name,
       'Notifications-Count': _.keys(this.notifications).length,
-      'Application-Icon': this.options.applicationIcon
+      'Application-Icon': this.options.icon
     }]
   };
   _.each(this.notifications, function(options, name) {
@@ -65,6 +67,9 @@ GrowlApplication.prototype.register = function(callback) {
  *   - text: Message text, visible to the user.
  *   - callback: Called when response is recieved from the host.
  *   - sticky: Makes sure notification stays on screen until clicked or dismissed.
+ *   - icon: A buffer with a notification icon image
+ *
+ * @return {string} The randomized notification ID.
  */
 GrowlApplication.prototype.sendNotification = function (name, options) {
 
@@ -72,12 +77,16 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
   if (!notification)
     throw new Error('Cannot find notification with name <'+ name +'>');
 
+  var hash = crypto.createHash('md5');
+  hash.update(crypto.randomBytes(16));
+  var id = hash.digest('hex');
+
   _.defaults(options, {
     title: notification.displayName,
-    text: '',
-    callback: function() {}, // Called when a response is recieved
-    sticky: false, // Stay on screen until clicked
-    priority: 0, // In range [-2, 2], 2 meaning emergency
+    text: null,
+    callback: function() {}, // Called when a response is received
+    sticky: null, // Stay on screen until clicked
+    priority: null, // In range [-2, 2], 2 meaning emergency
     icon: notification.icon
   });
 
@@ -86,6 +95,7 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
     headers: {
       'Application-Name': this.name,
       'Notification-Name': name,
+      'Notification-ID': id,
       'Notification-Title': options.title,
       'Notification-Text': options.text,
       'Notification-Sticky': !!options.sticky,
@@ -94,8 +104,15 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
     }
   }, options.callback);
 
+  return id;
 };
 
+/**
+ * Add notifications to this instance.
+ *
+ * @param notifications An object where each key represents a notification name and each value is an
+ *   object with the following keys:
+ */
 GrowlApplication.prototype.addNotifications = function(notifications) {
   _.each(notifications, function(options, name) {
     _.defaults(options, {
@@ -220,8 +237,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb) {
   // Retrieve the data that shall be sent
   var data = this.assembleQuery(query);
 
-  if (this.options.debug)
-    console.log(data.message);
+  this.options.debugFn('message_out', data.message);
 
   // Connect
   socket.connect(this.options.port, this.options.hostname, function() {
@@ -234,8 +250,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb) {
   });
   socket.once('data', function(data) {
     socket.destroy();
-    if (self.options.debug)
-      console.log(data.toString());
+    self.options.debugFn('message_in', data.toString());
     var response = self.parseResponse(data);
     if (response && response.status) // All good
       cb(true);
@@ -264,7 +279,7 @@ GrowlApplication.prototype.sendQuery = function(query, cb) {
 
 
 /**
-  Parses and returns a raw response into an object which looks like this:
+  Parses and returns a raw response string into an object with this structure:
   {
     status: true, // OK | ERROR => true | false
     headers: {
