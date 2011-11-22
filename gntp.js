@@ -14,7 +14,7 @@ var GrowlApplication = function(applicationName, options) {
     hostname: 'localhost',
     port: 23053,
     timeout: 5000, // Socket inactivity timeout
-    applicationIcon: null, // Buffer
+    icon: null, // Buffer
     debug: false,
     additionalHeaders: {'X-Sender': 'Node.js GNTP Library'}, // Send on every request TODO: not merged
     encryption: false,
@@ -78,7 +78,7 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
     callback: function() {}, // Called when a response is recieved
     sticky: false, // Stay on screen until clicked
     priority: 0, // In range [-2, 2], 2 meaning emergency
-    icon: null
+    icon: notification.icon
   });
 
   this.sendQuery({
@@ -90,7 +90,7 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
       'Notification-Text': options.text,
       'Notification-Sticky': !!options.sticky,
       'Notification-Priority': options.priority,
-      'Notification-Priority': options.icon // Note that if null (default), this header will be omitted
+      'Notification-Icon': options.icon // Note that if null (default), this header will be omitted
     }
   }, options.callback);
 
@@ -100,7 +100,8 @@ GrowlApplication.prototype.addNotifications = function(notifications) {
   _.each(notifications, function(options, name) {
     _.defaults(options, {
       displayName: name, // Set display name
-      enabled: true // Enabled by default
+      enabled: true, // Enabled by default
+      icon: null
     });
   });
   this.notifications = notifications;

@@ -10,7 +10,7 @@ var myapp = new gtnp.GrowlApplication('Shit Head', {
   debug: true,
   //password: 'bacon',
   hashAlgorithm: 'sha256',
-  applicationIcon: fs.readFileSync('./volcano.jpg')
+  //icon: fs.readFileSync('./volcano.jpg')
 });
 
 /*
@@ -25,7 +25,8 @@ myapp.addNotifications({
   'Egg Shat': {},
   'Fart': {
     enabled: true,
-    displayName: 'A fart just occured'
+    displayName: 'A fart just occured',
+    icon: fs.readFileSync('./volcano.jpg'),
   }
 });
 
@@ -47,6 +48,7 @@ myapp.register(function(status, err) {
   myapp.sendNotification('Egg Shat', {
     text: 'Bacon egg är gott',
     sticky: true,
+    icon: fs.readFileSync('ansikte.jpg'),
     callback: function(status, err) {
       if (!status)
         throw err;
