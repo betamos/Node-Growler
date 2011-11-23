@@ -1,117 +1,100 @@
-
+/**
+ * @preserve
+ *
+ * NodeGrowler 0.1-alpha
+ *
+ * A node.js Growl server which communicates with Growl clients using GNTP 1.0
+ * (Growl Notification Transport Protocol).
+ *
+ * @author Didrik Nordström, http://betamos.se/
+ *
+ * @see http://nodejs.org/
+ * @see http://growl.info/
+ */
 var util = require('util');
 var net = require('net');
 var crypto = require('crypto');
+var SecurityGuard = require('./security-guard.js');
 var _ = require('underscore');
 
 var nl = '\r\n', nl2 = nl+nl;
 
-var GrowlApplication = function(applicationName, options) {
-  this.name = applicationName;
+/**
+ * Create a Growl application. This is sort of a server which communicates
+ * with a Growl client over GNTP, a TCP protocol developed specifically for
+ * Growl.
+ *
+ * @see http://growl.info/documentation/developer/gntp.php
+ *
+ * @param {string} name Name of the application. Visible in the Growl client
+ *   settings.
+ *
+ * @param {Object<string, *>=} options An object with the following keys:
+ *   - {?string} hostname E.g. '123.321.123.321', 'example.com'.
+ *     Defaults to 'localhost'
+ *   - {?number} port Network port number. Defaults to 23053, the GNTP port
+ *   - {?number} timeout Timeout for network requests
+ *   - {Buffer} icon An application icon which will appear with all
+ *     notifications sent by this application. Binary image file data.
+ *   - {Object.<string, (string|number|boolean|Buffer|null)>} additionalHeaders
+ *     More GNTP headers to append to every query.
+ *
+ * @param {Object<string, ?string>=} security An object with the following keys:
+ *   - password Configured in the Growl client. Normally not required if on the
+ *     the client is on the same machine.
+ *   - hashAlgorithm Required if password given. Available algorithms:
+ *     - MD5 (not very secure)
+ *     - SHA1 (secure, but doesn't provide digest long enough for AES)
+ *     - SHA256 (secure, default)
+ *     - SHA512 (Pentagon)
+ *   - encryptionsAlgorithm Note that Growl 1.3.1 for OS X does NOT support
+ *     encryption yet because of stupid laws in some countries. Therefore
+ *     encryption is disabled by default. In Growl for Windows it works though,
+ *     and these are the available algorithms:
+ *     - AES (recommended)
+ *     - DES
+ *     - 3DES
+ */
+var GrowlApplication = function(name, options, security) {
+  this.name = name;
   this.options = options;
 
   _.defaults(options, {
     hostname: 'localhost',
     port: 23053,
     timeout: 5000, // Socket inactivity timeout
-    icon: null, // Buffer
-    debugFn: function() {},
+    icon: null, // Buffer,
     additionalHeaders: {
       'Origin-Software-Name': 'Node.js GNTP Library',
       'Origin-Software-Version': '1.0'
     },
-    encryption: false,
-    hashAlgorithm: 'sha1',
-    password: null
+    debugFn: function() {}
   });
+
+  // Our guard will take care of all security issues
+  this.guard = new SecurityGuard(
+      security.password || null,
+      security.hashAlgorithm || 'SHA256',
+      security.encryptionAlgorithm || null);
 
   this.notifications = {};
 };
 
+// Export using node.js module layer
 exports.GrowlApplication = GrowlApplication;
 
-
 /**
- * Callback will get {Boolean} status, {Error} error
- */
-GrowlApplication.prototype.register = function(callback) {
-
-  var q = {
-    messageType: 'REGISTER',
-    headers: [{
-      'Application-Name': this.name,
-      'Notifications-Count': _.keys(this.notifications).length,
-      'Application-Icon': this.options.icon
-    }]
-  };
-  _.each(this.notifications, function(options, name) {
-    q.headers.push({
-      'Notification-Name': name,
-      'Notification-Display-Name': options.displayName || name,
-      'Notification-Enabled': !!options.enabled
-    });
-  });
-
-  this.sendQuery(q, callback || function() {});
-};
-
-/**
- * Send a notification to the host.
+ * Add notifications to this GrowlApplication instance. This does NOT send any
+ * notification, this just makes it possible to register them to the Growl
+ * client (required). After that it is possible to send notifications.
  *
- * @param {string} name Notification name, must have already been added to the
- *   GrowlApplication object. Throws an error if it doesn't exist.
- *
- * @param {Object=} options
- *   Additional options object with the following optional keys:
- *   - title: Title of the message on the screen, visible to user.
- *   - text: Message text, visible to the user.
- *   - callback: Called when response is recieved from the host.
- *   - sticky: Makes sure notification stays on screen until clicked or dismissed.
- *   - icon: A buffer with a notification icon image
- *
- * @return {string} The randomized notification ID.
- */
-GrowlApplication.prototype.sendNotification = function (name, options) {
-
-  var notification = this.notifications[name];
-  if (!notification)
-    throw new Error('Cannot find notification with name <'+ name +'>');
-
-  var hash = crypto.createHash('md5');
-  hash.update(crypto.randomBytes(16));
-  var id = hash.digest('hex');
-
-  _.defaults(options, {
-    title: notification.displayName,
-    text: null,
-    callback: function() {}, // Called when a response is received
-    sticky: null, // Stay on screen until clicked
-    priority: null, // In range [-2, 2], 2 meaning emergency
-    icon: notification.icon
-  });
-
-  this.sendQuery({
-    messageType: 'NOTIFY',
-    headers: {
-      'Application-Name': this.name,
-      'Notification-Name': name,
-      'Notification-ID': id,
-      'Notification-Title': options.title,
-      'Notification-Text': options.text,
-      'Notification-Sticky': !!options.sticky,
-      'Notification-Priority': options.priority,
-      'Notification-Icon': options.icon // Note that if null (default), this header will be omitted
-    }
-  }, options.callback);
-
-  return id;
-};
-
-/**
- * Add notifications to this instance.
- *
- * @param notifications An object where each key represents a notification name and each value is an
- *   object with the following keys:
+ * @param {Object.<string, Object>} notifications An object where keys are the
+ *   names of the notifications and the values are objects with these keys:
+ *   - {?string} displayName: The name of the notification, as seen in the
+ *     Growl client settings. Defaults to the name of the notification.
+ *   - {?boolean} enabled: If this notification should be enabled be default.
+ *     Defaults to true.
+ *   - {Buffer} icon: An image file buffer to display as notification icon.
  */
 GrowlApplication.prototype.addNotifications = function(notifications) {
   _.each(notifications, function(options, name) {
@@ -124,64 +107,115 @@ GrowlApplication.prototype.addNotifications = function(notifications) {
   this.notifications = notifications;
 };
 
-/* PRIVATE STUFF */
+/**
+ * Register this application to the Growl client. All notifications that have
+ * been added will be registered. If an application is registered multiple
+ * times with the same name, the previous gets overwritten. It is required to
+ * register before sending notifications. Registrations are persistent on the
+ * client so there is no need to register if no updates to the application has
+ * been made.
+ *
+ * @param {?function(boolean, Error=)} Always called. Possible errors are "not
+ *   authorized" (usually wrong or lacking password), connection error etc.
+ */
+GrowlApplication.prototype.register = function(callback) {
 
-GrowlApplication.prototype.hashHead = function() {
-  // Need to check for type since an empty string is a valid password
-  if (typeof this.options.password != 'string')
-    return '';
+  var headerBlocks = [{
+    'Application-Name': this.name,
+    'Notifications-Count': _.keys(this.notifications).length,
+    'Application-Icon': this.options.icon
+  }];
+  _.each(this.notifications, function(options, name) {
+    headerBlocks.push({
+      'Notification-Name': name,
+      'Notification-Display-Name': options.displayName || name,
+      'Notification-Enabled': !!options.enabled,
+      // There is a bug in Growl 1.3.2 which ignores this icon
+      // @see GrowlApplication.prototype.sendNotification
+      'Notification-Icon': options.icon
+    });
+  });
 
-  var salt = crypto.randomBytes(16),
-    hash = crypto.createHash(this.options.hashAlgorithm),
-    key, keyHash, hashHead;
-
-  hash.update(this.options.password);
-  hash.update(salt);
-  // The key is pass+salt hashed
-  key = hash.digest();
-  // Create a new hash object
-  hash = crypto.createHash(this.options.hashAlgorithm);
-  // Yo dawg, we put a hash in yo hash
-  hash.update(key);
-  // Retrieve the final hash (digest) in hex form
-  keyHash = hash.digest('hex');
-  hashHead = this.options.hashAlgorithm +':'+ keyHash +'.'+ salt.toString('hex');
-  // Actually, GNTP only requires the algorithm id (e.g. sha1) to be uppercase
-  // but their example GNTP information lines are all uppercase so better be safe.
-  return ' '+ hashHead.toUpperCase();
+  this.sendQuery('REGISTER', headerBlocks, callback || function() {});
 };
 
 /**
- * Assemble a query into a buffer that is ready to be sent.
- * One possible side effect is that the query object may be altered.
+ * Send a notification to the host.
  *
- * @param {Object} query
- *   An object with the keys:
- *   - messageType: The GNTP message type, e.g. "NOTIFY"
- *   - headers: An object with header-names as keys and each value is one of:
- *     - string: (GNTP <string>)
- *     - number: (GNTP <int>) Will run through parseInt to assure integer
- *     - boolean: (GNTP <boolean>) Must be true or false, no tricks
- *     - Buffer: for sending binary data, e.g. an image
- *     - null: omits the entire header
+ * @param {string} name Notification name, must have already been added to the
+ *   GrowlApplication object. Throws an error if it doesn't exist.
+ *
+ * @param {Object=} options Additional options object with the following keys:
+ *   - {?string} title: Title of the message on the screen, visible to user
+ *   - {?string} text: Message text, visible to the user
+ *   - {?function(boolean, Error=)} callback Always called
+ *   - {?boolean} sticky: Makes sure notification stays on screen until clicked
+ *   - {Buffer} icon: Image file buffer
+ *
+ * @return {string} The randomized notification ID
+ */
+GrowlApplication.prototype.sendNotification = function (name, options) {
+
+  var notification = this.notifications[name];
+  if (!notification)
+    throw new Error('Cannot find notification with name <'+ name +'>');
+
+  var id = crypto.randomBytes(16).toString('hex');
+
+  options = options || {};
+  _.defaults(options, {
+    title: notification.displayName,
+    text: null,
+    callback: function() {}, // Called when a response is received
+    sticky: null, // Stay on screen until clicked
+    priority: null, // In range [-2, 2], 2 meaning emergency
+    icon: notification.icon
+  });
+
+  var headerBlocks = [{
+    'Application-Name': this.name,
+    'Notification-Name': name,
+    'Notification-ID': id,
+    'Notification-Title': options.title,
+    'Notification-Text': options.text,
+    'Notification-Sticky': !!options.sticky,
+    'Notification-Priority': options.priority,
+    'Notification-Icon': options.icon // @see GrowlApplication.prototype.register
+  }];
+
+  this.sendQuery('NOTIFY', headerBlocks, options.callback);
+
+  return id;
+};
+
+/* PRIVATE */
+
+/**
+ * Assemble a query into a message string and attachments as buffers.
+ * One possible side effect is that the headerBlocks object may be altered.
+ *
+ * @param {Array.<Object.<string, (string|number|boolean|Buffer|null)>>}
+ *   headerBlocks An array of header blocks, where each block is an object with
+ *   a string key and one of these values:
+ *   - string: (GNTP <string>)
+ *   - number: (GNTP <int>) Will run through parseInt to assure integer
+ *   - boolean: (GNTP <boolean>) May NOT be null, see below.
+ *   - Buffer: (GNTP <uniqueid>) for sending binary data, e.g. an image.
+ *   - null: omits the entire header
  *
  * @return {Object} An object with the keys:
- *   - message: {string} The message, does NOT begin nor end with CRLF
- *   - attachments: {Object} Keys: {string} GNTP <uniqueid>, Values: {Buffer}
+ *   - {string} message: The message, does NOT begin nor end with CRLF
+ *   - {Object.<string, !Buffer>} attachments: Keys are the GNTP <uniqueid>'s,
+ *     values are their corresponding buffers.
  */
-GrowlApplication.prototype.assembleQuery = function(query) {
-  var self = this;
-  var infoLine = 'GNTP/1.0 '+ query.messageType +' NONE' + this.hashHead();
-  var blocks = []; // TODO: String performance
-  var attachments = {}; // An object with <uniqueid> as keys and buffers as values
-  if (!util.isArray(query.headers))
-    query.headers = [query.headers]; // Convert to an array
-  _.each(query.headers, function(header, index) {
+GrowlApplication.prototype.assembleQuery = function(headerBlocks) {
+  var self = this,
+    blocks = [],
+    attachments = {}; // An object with <uniqueid> as keys and buffers as values
+  _.each(headerBlocks, function(header, index) {
     var lines = [];
     if (index == 0) {
-      // First line in first block is always infoLine
-      lines.push(infoLine);
-      // Additional headers only once
+      // Additional headers belongs to the first block
       _.defaults(header, self.options.additionalHeaders);
     }
     _.each(header, function(value, key) {
@@ -227,68 +261,116 @@ GrowlApplication.prototype.assembleQuery = function(query) {
 };
 
 /**
- * Send a query and wait for response, then call callback with cb({Boolean} status, {Error|Null} err)
+ * Retrieve the GNTP information line which often looks something like
+ * "GNTP/1.0 REGISTER NONE" or similar.
+ *
+ * @param {string} messageType GNTP message type, e.g. 'REGISTER'
+ *
+ * @return {string} GNTP information line, without CRLF.
  */
-GrowlApplication.prototype.sendQuery = function(query, cb) {
+GrowlApplication.prototype.getInfoLine = function(messageType) {
+  var infoLine = 'GNTP/1.0 '+ messageType +' ';
+  if (this.guard.encAlg) // Encryption enabled
+      infoLine += this.guard.encAlg +':'+ this.guard.iv.toString('hex');
+  else // No encryption
+    infoLine += 'NONE';
+  if (this.guard.hashAlg) // Password protection
+    infoLine += ' '+ this.guard.hashAlg +':'+
+                this.guard.keyHash +'.'+ this.guard.salt.toString('hex');
+  // Actually, GNTP only requires the algorithm id (e.g. sha1) to be uppercase
+  // but their example GNTP information lines are all uppercase so better be safe.
+  return infoLine.toUpperCase();
+};
+
+/**
+ * Send a query and wait for response, then call provided callback.
+ * Takes care of calling appropriate security methods and encryption.
+ *
+ * @param {string} messageType The GNTP message type, e.g. "NOTIFY"
+ *
+ * @param {Array.<Object.<string, (string|number|boolean|Buffer|null)>>}
+ *   headerBlocks A list of header objects.
+ * @see GrowlApplication.prototype.assembleQuery
+ *
+ * @param {function(boolean, Error=)} callback
+ *   
+ */
+GrowlApplication.prototype.sendQuery = function(messageType, headerBlocks, callback) {
   var self = this;
   var socket = new net.Socket();
-  socket.setEncoding('utf8'); // Response will be a string instead of buffer
-
-  // Retrieve the data that shall be sent
-  var data = this.assembleQuery(query);
-
-  this.options.debugFn('message_out', data.message);
+  // Since neither Growl for OS X or Windows encrypt their responses,
+  // presume plain text
+  socket.setEncoding('utf8');
 
   // Connect
   socket.connect(this.options.port, this.options.hostname, function() {
-    socket.write(data.message);
+    // Retrieve the data that shall be sent
+    var data = self.assembleQuery(headerBlocks),
+      infoLine = self.getInfoLine(messageType);
+
+    self.options.debugFn('message_out', infoLine + nl + data.message);
+
+    // Information line never encrypted
+    socket.write(infoLine+nl);
+    self.guard.writeSecure(socket, data.message);
+
     _.each(data.attachments, function(buffer, uniqueid) {
       socket.write(nl2 +'Identifier: '+ uniqueid + nl +'Length: '+ buffer.length + nl2);
-      socket.write(buffer);
+      self.guard.writeSecure(socket, buffer);
     });
     socket.write(nl2);
   });
-  socket.once('data', function(data) {
-    socket.destroy();
+
+  var recieved = '';
+  // Aggregate data before parsing
+  socket.on('data', function(data) {
+    recieved += data;
     self.options.debugFn('message_in', data.toString());
-    var response = self.parseResponse(data);
+  });
+
+  // Actively wait for remote to close socket
+  socket.once('close', function(error) {
+    var response = self.parseResponse(recieved);
     if (response && response.status) // All good
-      cb(true);
+      callback(true);
     else if (response) { // GNTP responded with error
       var e = new Error('Host: '+
         (response.headers['Error-Description'] ? response.headers['Error-Description'] : ''));
 
       e.errorCode = response.headers['Error-Code'];
-      cb(false, e);
+      callback(false, e);
     }
 
     else // Not even valid GNTP
-      cb(false, new Error('The response was invalid GNTP.'));
+      callback(false, new Error('The response was invalid GNTP.'));
   });
 
   // Exception management
   socket.on('error', function(exception) {
     // Could probably not connect to server
-    cb(false, exception);
+    callback(false, exception);
   });
+  // We can not wait forever
   socket.setTimeout(this.options.timeout, function() {
     socket.destroy();
-    cb(false, new Error('Server did not respond'));
+    callback(false, new Error('Server did not respond'));
   });
 };
 
 
 /**
-  Parses and returns a raw response string into an object with this structure:
-  {
-    status: true, // OK | ERROR => true | false
-    headers: {
-      'Response-Action': 'NOTIFY',
-      'Error-Code': '402'
-    }
-  }
-  or null if the GNTP information line is malformed.
-  Ignores lines that are not key: value structured
+ * Parses a raw response string into an object with information about the status
+ * and other headers. Ignores lines that are not "key: value" structured.
+ *
+ * @param {string} data Raw response string
+ *
+ * @return {Object} If malformed GNTP response information line, then null
+ *   or else an object with the following keys:
+ *   - {boolean} status: Message type, true for '-OK', false for '-ERROR'
+ *   - {Object.<string, string>} headers: An object with keys and values
+ *     corresponding to the GNTP headers, e.g.
+ *     - 'Response-Action': 'NOTIFY',
+ *     - 'Error-Code': '402'
  */
 GrowlApplication.prototype.parseResponse = function(data) {
   var lines = data.split(nl),
