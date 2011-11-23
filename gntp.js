@@ -6,6 +6,12 @@
  * A node.js Growl server which communicates with Growl clients using GNTP 1.0
  * (Growl Notification Transport Protocol).
  *
+ * Dependencies:
+ * - node.js 0.6.1+
+ * - Underscore.js 1.2.2+
+ * - openssl determines encryptions available, only affects encrypted
+ *   communication
+ *
  * @author Didrik Nordström, http://betamos.se/
  *
  * @see http://nodejs.org/
@@ -30,14 +36,14 @@ var nl = '\r\n', nl2 = nl+nl;
  *   settings.
  *
  * @param {Object<string, *>=} options An object with the following keys:
- *   - {?string} hostname E.g. '123.321.123.321', 'example.com'.
- *     Defaults to 'localhost'
+ *   - {?string} hostname E.g. '123.45.67.89', 'example.com'.
+ *     Defaults to 'localhost'.
  *   - {?number} port Network port number. Defaults to 23053, the GNTP port
  *   - {?number} timeout Timeout for network requests
  *   - {Buffer} icon An application icon which will appear with all
  *     notifications sent by this application. Binary image file data.
  *   - {Object.<string, (string|number|boolean|Buffer|null)>} additionalHeaders
- *     More GNTP headers to append to every query.
+ *     More GNTP headers to append to every query
  *
  * @param {Object<string, ?string>=} security An object with the following keys:
  *   - password Configured in the Growl client. Normally not required if on the
@@ -57,19 +63,23 @@ var nl = '\r\n', nl2 = nl+nl;
  */
 var GrowlApplication = function(name, options, security) {
   this.name = name;
-  this.options = options;
+  this.options = {};
 
-  _.defaults(options, {
+  _.defaults(this.options, options, {
     hostname: 'localhost',
     port: 23053,
     timeout: 5000, // Socket inactivity timeout
     icon: null, // Buffer,
-    additionalHeaders: {
-      'Origin-Software-Name': 'Node.js GNTP Library',
-      'Origin-Software-Version': '1.0'
-    },
+    additionalHeaders: {},
     debugFn: function() {}
   });
+
+  this.persistentHeaders = {
+    'Origin-Software-Name': 'Node.js GNTP Library',
+    'Origin-Software-Version': '1.0'
+  };
+  // Extend with user supplied headers
+  _.defaults(this.persistentHeaders, this.options.additionalHeaders);
 
   // Our guard will take care of all security issues
   this.guard = new SecurityGuard(
@@ -98,7 +108,8 @@ exports.GrowlApplication = GrowlApplication;
  */
 GrowlApplication.prototype.addNotifications = function(notifications) {
   _.each(notifications, function(options, name) {
-    _.defaults(options, {
+    notifications[name] = {};
+    _.defaults(notifications[name], options, {
       displayName: name, // Set display name
       enabled: true, // Enabled by default
       icon: null
@@ -162,7 +173,7 @@ GrowlApplication.prototype.sendNotification = function (name, options) {
 
   var id = crypto.randomBytes(16).toString('hex');
 
-  options = options || {};
+  options = _.clone(options) || {};
   _.defaults(options, {
     title: notification.displayName,
     text: null,
@@ -216,7 +227,7 @@ GrowlApplication.prototype.assembleQuery = function(headerBlocks) {
     var lines = [];
     if (index == 0) {
       // Additional headers belongs to the first block
-      _.defaults(header, self.options.additionalHeaders);
+      _.defaults(header, self.persistentHeaders);
     }
     _.each(header, function(value, key) {
       if (typeof key != 'string' || value == null)
