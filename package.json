@@ -2,20 +2,30 @@
   "name": "growler",
   "version": "0.0.1",
   "description": "Send notifications to remote and local Growl clients using GNTP",
-  "keywords": ["Growl", "GNTP", "notifications"],
+  "keywords": [
+    "Growl",
+    "GNTP",
+    "notifications"
+  ],
   "homepage": "https://github.com/betamos/Node-Growler",
   "bugs": "https://github.com/betamos/Node-Growler/issues",
   "author": "Didrik Nordström <didrik@betamos.se> (http://betamos.se/)",
   "main": "lib/growler.js",
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "directories": {
     "lib": "lib"
   },
   "repository": {
     "type": "git",
-    "url": "https://betamos@github.com/betamos/Node-Growler.git"
+    "url": "git://github.com/betamos/Node-Growler.git"
   },
   "dependencies": {
     "underscore": ">=1.1.5"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=0.6.1"
   }
 }
