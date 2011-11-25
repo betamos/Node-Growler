@@ -7,8 +7,10 @@
     "GNTP",
     "notifications"
   ],
-  "homepage": "https://github.com/betamos/Node-Growler",
-  "bugs": "https://github.com/betamos/Node-Growler/issues",
+  "bugs": {
+    "url": "https://github.com/betamos/Node-Growler/issues",
+    "email": "didrik@betamos.se"
+  },
   "author": "Didrik Nordström <didrik@betamos.se> (http://betamos.se/)",
   "main": "lib/growler.js",
   "files": [
