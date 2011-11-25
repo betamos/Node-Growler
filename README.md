@@ -1,8 +1,9 @@
 
 Node Growler
 ============
-A [Growl][1] server for [node.js][2] which sends notifications to remote
-and local Growl clients. It can be used to display notifications on the screen clients using GNTP which are shown on the client machine. It can be used for sending notifications on the screen.
+A [Growl][1] server for [node.js][2] which sends notifications to remote and
+local Growl clients using [GNTP][3]. Could for example be used to notify you when
+something happens on your node.js server, e.g. a user just logged in.
 
 Installation
 ------------
@@ -11,7 +12,7 @@ Installation
 Dependencies
 ------------
 * node.js >= 0.6
-* [Underscore.js][3] >=1.1.5
+* [Underscore.js][4] >=1.1.5
 
 Usage
 -----
@@ -42,4 +43,5 @@ Dual licensed under the MIT or GPL Version 3 licenses.
 
 [1]:	http://growl.info/
 [2]:	http://nodejs.org/
-[3]:	http://documentcloud.github.com/underscore/
+[3]:	http://www.growlforwindows.com/gfw/help/gntp.aspx
+[4]:	http://documentcloud.github.com/underscore/
