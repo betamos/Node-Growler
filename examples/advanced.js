@@ -5,7 +5,7 @@ var growler = require('growler'),
 
 // Create a Growl application
 var myApp = new growler.GrowlApplication('Advanced Growl App', {
-  hostname: '10.211.55.4', // IP or DNS
+  // hostname: 'my.example.org', // IP or DNS
   // port: 23053, // Default GNTP port
   // timeout: 5000, // Socket inactivity timeout
   icon: fs.readFileSync('nodejs.png'), // Buffer
@@ -13,9 +13,9 @@ var myApp = new growler.GrowlApplication('Advanced Growl App', {
     'X-Foo': 'bar' // Additional GNTP headers sent on all requests
   }
 }, {
-  password: 'bacon', // Password is set in the Growl client settings
+  // password: 'abc123', // Password is set in the Growl client settings
   // hashAlgorithm: 'SHA512', // MD5, SHA1, SHA256 (default), SHA512
-  encryption: '3DES' // AES, DES or 3DES, by default no encryption
+  // encryption: 'AES' // AES, DES or 3DES, by default no encryption
 });
 
 myApp.setNotifications({
@@ -32,17 +32,10 @@ myApp.register(function(success, err) {
   if (!success)
     throw err;
   // Wait for register to complete before sending notifications
-  var id = myApp.sendNotification('Server Status', {
+  myApp.sendNotification('Server Status', {
     title: 'Node Growler online',
     text: 'Wasn\'t that hard was it?'
   });
-  setTimeout(function() {
-    myApp.sendNotification('Server Status', {
-      title: 'Node Growler online',
-      text: 'Wasn\'t that hard was it?',
-      coalescingID: id
-    });
-  }, 500);
   myApp.sendNotification('User Notice', {
     title: 'Reactor Overheated',
     text: 'The pressure in the reactor is reaching critical levels',
