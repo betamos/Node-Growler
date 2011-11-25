@@ -12,7 +12,10 @@
   "author": "Didrik Nordström <didrik@betamos.se> (http://betamos.se/)",
   "main": "lib/growler.js",
   "files": [
-    "lib"
+    "lib",
+    "examples",
+    "README.md",
+    "CHANGELOG"
   ],
   "directories": {
     "lib": "lib"
