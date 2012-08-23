@@ -1,3 +1,4 @@
+[![build status](https://secure.travis-ci.org/betamos/Node-Growler.png)](http://travis-ci.org/betamos/Node-Growler)
 
 Node Growler
 ============
