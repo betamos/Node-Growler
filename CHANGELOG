@@ -1,4 +1,8 @@
 
+2013-09-25: v0.0.2
+
+ - Adding support for URL callbacks (on-click actions)
+
 2011-11-25: v0.0.1
 
 - Initial release
