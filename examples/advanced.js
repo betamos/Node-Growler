@@ -28,8 +28,8 @@ myApp.setNotifications({
 });
 
 // Must register to send messages
-myApp.register(function(success, err) {
-  if (!success)
+myApp.register(function(err) {
+  if (err)
     throw err;
   // Wait for register to complete before sending notifications
   myApp.sendNotification('Server Status', {
@@ -42,8 +42,8 @@ myApp.register(function(success, err) {
     sticky: true, // Stay on screen
     priority: 2, // Critical
     icon: fs.readFileSync('radioactivity.png') // Override
-  }, function(success, err) { // Callback
-    if (success)
+  }, function(err) { // Callback
+    if (!err)
       console.log('The important notification was shown to the user');
     else {
       console.log('Warning! The important notification was not shown to the user');
